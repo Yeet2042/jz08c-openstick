@@ -5,7 +5,7 @@
 #   sudo ./install.sh [--kernel jz08c-kernel-6.12.1.tar.gz] [--ecm]
 #
 #   --kernel FILE  install kernel 6.12 (+ modules, dtb, backlight module) from the
-#                  release tarball and boot it; without it the stock OpenStick 6.6
+#                  tarball made by kernel/build.sh and boot it; without it the stock OpenStick 6.6
 #                  kernel is kept and the 6.6 dtb/module from this repo are used
 #   --ecm          switch the USB gadget from RNDIS to CDC-ECM (works on macOS)
 #
