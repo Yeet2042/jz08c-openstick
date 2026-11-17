@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
-	"strings"
 	"time"
 
 	"golang.org/x/image/font"
@@ -138,6 +137,7 @@ func (c canvas) bars(x, y, pct int, col color.Color) {
 type Status struct {
 	Host    string
 	Battery int
+	BattMV  int
 	USB     bool
 	Modem   Modem
 	IPs     [3]string // usb0, wlan0, wwan0
@@ -149,13 +149,16 @@ func render(s Status) *image.RGBA {
 	c := canvas{img}
 	c.rect(0, 0, W-1, H-1, colBG)
 
-	// header: hostname, battery, time
+	// header: battery (percent + measured voltage), time
 	c.rect(0, 0, W-1, 14, colHeader)
-	c.text(3, 2, strings.ToUpper(strings.TrimPrefix(s.Host, "openstick-")), fBold, colAccent)
 	c.textRight(W-3, 2, time.Now().Format("15:04"), fBold, colFG)
 	if s.Battery >= 0 {
-		c.battery(34, 3, s.Battery, s.USB)
-		c.text(54, 2, fmt.Sprintf("%d%%", s.Battery), fSmall, colFG)
+		c.battery(3, 3, s.Battery, s.USB)
+		txt := fmt.Sprintf("%d%%", s.Battery)
+		if s.BattMV > 0 {
+			txt += fmt.Sprintf(" %d.%02dV", s.BattMV/1000, (s.BattMV%1000)/10)
+		}
+		c.text(23, 2, txt, fSmall, colFG)
 	}
 
 	// signal block

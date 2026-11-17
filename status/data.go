@@ -194,11 +194,15 @@ func writeFile(path, val string) error {
 	return os.WriteFile(path, []byte(val), 0)
 }
 
-// battery returns the charge in percent (-1 if unknown) and whether USB power is present.
-func battery() (int, bool) {
-	pct := -1
+// battery returns the charge in percent (-1 if unknown), the measured battery
+// voltage in mV (0 if unknown) and whether USB power is present.
+func battery() (int, int, bool) {
+	pct, mv := -1, 0
 	if v, err := strconv.Atoi(readFile("/sys/class/power_supply/pm8916-bms-vm/capacity")); err == nil {
 		pct = v
 	}
-	return pct, readFile("/sys/class/power_supply/pm8916-lbc-chgr/online") == "1"
+	if v, err := strconv.Atoi(readFile("/sys/class/power_supply/pm8916-bms-vm/voltage_now")); err == nil {
+		mv = v / 1000
+	}
+	return pct, mv, readFile("/sys/class/power_supply/pm8916-lbc-chgr/online") == "1"
 }

@@ -90,10 +90,11 @@ func watchButton(f *os.File, presses chan<- struct{}) {
 }
 
 func collect(mr *modemReader, wr *wifiReader) Status {
-	pct, usb := battery()
+	pct, mv, usb := battery()
 	return Status{
 		Host:    hostname(),
 		Battery: pct,
+		BattMV:  mv,
 		USB:     usb,
 		Modem:   mr.Read(),
 		IPs:     [3]string{ipv4("usb0"), ipv4("wlan0"), ipv4("wwan0")},
