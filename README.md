@@ -49,10 +49,10 @@ Out of the box: WiFi AP, modem with the original IMEI, SIM and 4G, and Bluetooth
 
 ## Extras: kernel 6.12, screen, battery, backlight, buttons
 
-Download `jz08c-kernel-6.12.1.tar.gz` and `jz-status-arm64` from the [latest release](https://github.com/Yeet2042/jz08c-openstick/releases), put `jz-status-arm64` in `status/`, copy the repo to the board, then run:
+First build the kernel and the status screen on your computer (see [Building](#building) below). That gives you `kernel/jz08c-kernel-6.12.1.tar.gz` and `status/jz-status-arm64`. Then copy the repo to the board and run:
 
 ```bash
-sudo ./install.sh --kernel jz08c-kernel-6.12.1.tar.gz --ecm   # --ecm: CDC-ECM USB networking for macOS
+sudo ./install.sh --kernel kernel/jz08c-kernel-6.12.1.tar.gz --ecm   # --ecm: CDC-ECM USB networking for macOS
 sudo reboot
 ```
 
@@ -67,7 +67,7 @@ What it installs:
 | `dts/msm8916-jz08c-v50.dts` | Device tree source for kernel 6.12, built on `msm8916-ufi.dtsi`. A compiled `.dtb` is included. |
 | `dts/msm8916-jz08c.dts` | Older equivalent for the stock 6.6 kernel: the decompiled v33 dtb plus the changes |
 | `firmware/jz08c-st7735s.bin` | Panel init sequence for `panel-mipi-dbi`, converted from the stock dtb with `tools/mkfw.py` |
-| `driver/jz08c_bl.c` | Small kernel module for switching the backlight. It's included in the 6.12 release tarball; a prebuilt `.ko` for 6.6 is in `driver/`. |
+| `driver/jz08c_bl.c` | Small kernel module for switching the backlight. `kernel/build.sh` builds it into the 6.12 tarball; a prebuilt `.ko` for 6.6 is in `driver/`. |
 | `status/` (Go) | Status screen showing battery, time, 4G signal, operator, IPs and WiFi clients. A short press of the power button turns the screen on or off. It talks to D-Bus, netlink and nl80211 directly and spawns no helper processes: about 9.5 MB RAM, versus 19 MB for the Python version in `board/jz-status.py`. |
 | `board/jz-lowbat` + timer | Shuts down cleanly when on battery and at or below 5% |
 | `board/logind-powerkey.conf` | A short power-key press no longer shuts down. A long press does. |
@@ -82,6 +82,8 @@ cd status && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="
 Both run fine on an Apple Silicon Mac: the kernel builds in an arm64 Debian container (OrbStack/Docker), and the Go binary is cross-compiled.
 
 `./jz-status-arm64 -png out.png` renders one frame to a PNG, without needing the framebuffer.
+
+Without `status/jz-status-arm64`, `install.sh` falls back to the Python status screen (`board/jz-status.py`).
 
 ### What the dtb adds
 
