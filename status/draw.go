@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/image/font"
@@ -144,12 +145,28 @@ type Status struct {
 	Clients int
 }
 
-func render(s Status) *image.RGBA {
+const numPages = 3
+
+// renderPage draws page 0 (status), 1 (resources) or 2 (containers).
+func renderPage(page int, s Status, r Res, cs []Container) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, W, H))
 	c := canvas{img}
 	c.rect(0, 0, W-1, H-1, colBG)
+	c.header(s)
+	switch page {
+	case 1:
+		c.resources(r)
+	case 2:
+		c.containers(cs)
+	default:
+		c.status(s)
+	}
+	c.pageDots(page)
+	return img
+}
 
-	// header: battery (percent + measured voltage), time
+// header: battery (percent + measured voltage) and time, on every page
+func (c canvas) header(s Status) {
 	c.rect(0, 0, W-1, 14, colHeader)
 	c.textRight(W-3, 2, time.Now().Format("15:04"), fBold, colFG)
 	if s.Battery >= 0 {
@@ -160,8 +177,42 @@ func render(s Status) *image.RGBA {
 		}
 		c.text(23, 2, txt, fSmall, colFG)
 	}
+}
 
-	// signal block
+// pageDots marks the current page at the bottom
+func (c canvas) pageDots(page int) {
+	x0 := W/2 - (numPages*8-4)/2
+	for i := 0; i < numPages; i++ {
+		col := colOffBar
+		if i == page {
+			col = colAccent
+		}
+		c.rect(x0+i*8, H-6, x0+i*8+3, H-4, col)
+	}
+}
+
+// hbar draws a thin usage bar for frac in [0,1]
+func (c canvas) hbar(y int, frac float64, col color.Color) {
+	c.rect(4, y, W-5, y+2, colOffBar)
+	if frac > 1 {
+		frac = 1
+	}
+	if w := int(frac * float64(W-9)); w > 0 {
+		c.rect(4, y, 4+w, y+2, col)
+	}
+}
+
+func usageColor(frac float64) color.RGBA {
+	switch {
+	case frac >= 0.9:
+		return colBad
+	case frac >= 0.7:
+		return colWarn
+	}
+	return colGood
+}
+
+func (c canvas) status(s Status) {
 	m := s.Modem
 	y := 20
 	switch {
@@ -184,7 +235,6 @@ func render(s Status) *image.RGBA {
 		c.text(4, y+21, op, fSmall, colDim)
 	}
 
-	// IP addresses
 	y = 58
 	c.rect(4, y-4, W-5, y-4, colLine)
 	for i, label := range []string{"USB", "WiFi", "4G"} {
@@ -193,7 +243,6 @@ func render(s Status) *image.RGBA {
 		y += 14
 	}
 
-	// WiFi clients
 	y += 4
 	c.rect(4, y-4, W-5, y-4, colLine)
 	c.text(4, y, "Clients", fBold, colDim)
@@ -202,7 +251,95 @@ func render(s Status) *image.RGBA {
 		cc = colGood
 	}
 	c.text(60, y, fmt.Sprint(s.Clients), fBold, cc)
-	return img
+}
+
+func (c canvas) resources(r Res) {
+	// CPU: busy %, average clock, hottest CPU zone
+	y := 18
+	c.text(4, y, "CPU", fBold, colDim)
+	c.text(28, y, fmt.Sprintf("%d%%", r.CPUPct), fBold, colFG)
+	c.text(58, y, fmt.Sprintf("%dM", r.FreqMHz), fSmall, colDim)
+	tc := colFG
+	if r.TempC >= 70 {
+		tc = colBad
+	} else if r.TempC >= 55 {
+		tc = colWarn
+	}
+	c.textRight(W-4, y, fmt.Sprintf("%.0f°C", r.TempC), fSmall, tc)
+	c.hbar(y+12, float64(r.CPUPct)/100, usageColor(float64(r.CPUPct)/100))
+
+	y = 36
+	c.text(4, y, "Load", fBold, colDim)
+	c.text(34, y, strings.Join(r.Load[:], " "), fSmall, colFG)
+
+	y = 50
+	mf := float64(r.MemUsedMB) / float64(max(r.MemTotMB, 1))
+	c.text(4, y, "RAM", fBold, colDim)
+	c.textRight(W-4, y, fmt.Sprintf("%d/%dM", r.MemUsedMB, r.MemTotMB), fSmall, colFG)
+	c.hbar(y+12, mf, usageColor(mf))
+
+	y = 68
+	c.text(4, y, "zram", fBold, colDim)
+	z := fmt.Sprintf("%d/%dM", r.SwapUsed, r.SwapTot)
+	if r.ZramRatio > 0 && r.SwapUsed >= 1 { // ratio is meaningless while nearly empty
+		z += fmt.Sprintf(" x%.1f", r.ZramRatio)
+	}
+	c.textRight(W-4, y, z, fSmall, colFG)
+
+	y = 82
+	df := r.DiskUsed / max(r.DiskTot, 0.001)
+	c.text(4, y, "Disk", fBold, colDim)
+	c.textRight(W-4, y, fmt.Sprintf("%.1f/%.1fG", r.DiskUsed, r.DiskTot), fSmall, colFG)
+	c.hbar(y+12, df, usageColor(df))
+
+	y = 102
+	c.text(4, y, "Up", fBold, colDim)
+	c.textRight(W-4, y, r.Uptime, fSmall, colFG)
+}
+
+func (c canvas) containers(cs []Container) {
+	up := 0
+	for _, ct := range cs {
+		if ct.Running {
+			up++
+		}
+	}
+	c.text(4, 18, "Containers", fBold, colAccent)
+	c.textRight(W-4, 18, fmt.Sprintf("%d/%d up", up, len(cs)), fSmall, colDim)
+	c.rect(4, 30, W-5, 30, colLine)
+	if len(cs) == 0 {
+		c.text(4, 40, "none", fSmall, colDim)
+		c.text(4, 56, "podman run -d ...", fSmall, colDim)
+		return
+	}
+	const rows = 6
+	for i, ct := range cs {
+		if i == rows {
+			c.text(4, 34+rows*13, fmt.Sprintf("+%d more", len(cs)-rows), fSmall, colDim)
+			break
+		}
+		y := 34 + i*13
+		dot := colOffBar
+		if ct.Running {
+			dot = colGood
+		} else if ct.State == "exited" || ct.State == "stopped" {
+			dot = colBad
+		}
+		c.rect(4, y+3, 8, y+7, dot)
+		name := ct.Name
+		if ct.Rootless {
+			name = "~" + name // rootless (user) container
+		}
+		if len(name) > 12 {
+			name = name[:12]
+		}
+		c.text(13, y, name, fSmall, colFG)
+		if ct.Running {
+			c.textRight(W-4, y, fmt.Sprintf("%.1fM", ct.MemMB), fSmall, colDim)
+		} else {
+			c.textRight(W-4, y, ct.State, fSmall, colDim)
+		}
+	}
 }
 
 // toXRGB converts to the panel's 32-bit little-endian XRGB8888 (bytes B,G,R,X).

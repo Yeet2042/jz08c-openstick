@@ -3,8 +3,10 @@
 How to run Debian 12 ([OpenStick](https://github.com/kinsamanka/OpenStick-Builder)) on the **JZ08C V50** 4G pocket WiFi (Qualcomm MSM8916). The board has a 1.44" TFT screen and a battery. With this repo the screen, battery charging, backlight, power button and 4G all work.
 
 <p align="center">
-  <img src="images/status-screen.png" width="256" alt="Status screen on the 128x128 TFT: battery, 4G signal, operator, IP addresses">
+  <img src="images/status-pages.png" width="720" alt="The three pages of the 128x128 TFT status screen: status, resources, containers">
 </p>
+
+**Power button:** a short press goes to the next page (status → resources → containers → status). Hold for 1 s to turn the screen on or off; while the screen is off, a short press turns it on. Hold for about 5 s to power off.
 
 > [!WARNING]
 > Flashing replaces the bootloader and partition table. Back up the whole eMMC first and keep the backup. EDL mode is in the SoC ROM, so you can always restore.
@@ -68,7 +70,7 @@ What it installs:
 | `dts/msm8916-jz08c.dts` | Older equivalent for the stock 6.6 kernel: the decompiled v33 dtb plus the changes |
 | `firmware/jz08c-st7735s.bin` | Panel init sequence for `panel-mipi-dbi`, converted from the stock dtb with `tools/mkfw.py` |
 | `driver/jz08c_bl.c` | Small kernel module for switching the backlight. `kernel/build.sh` builds it into the 6.12 tarball; a prebuilt `.ko` for 6.6 is in `driver/`. |
-| `status/` (Go) | Status screen showing battery, time, 4G signal, operator, IPs and WiFi clients. A short press of the power button turns the screen on or off. It talks to D-Bus, netlink and nl80211 directly and spawns no helper processes: about 9.5 MB RAM, versus 19 MB for the Python version in `board/jz-status.py`. |
+| `status/` (Go) | Status screen with three pages: **status** (4G signal, operator, IPs, WiFi clients), **resources** (CPU, temperature, load, RAM, zram, disk, uptime) and **containers** (root and rootless Podman containers and their RAM use). Every page shows battery %, voltage and the time. It talks to D-Bus, netlink, nl80211, sysfs and the Podman API directly, with no helper processes: about 9.5 MB RAM. The older Python version is in `board/jz-status.py`. |
 | `board/jz-lowbat` + timer | Shuts down cleanly when on battery and at or below 5% |
 | `board/logind-powerkey.conf` | A short power-key press no longer shuts down. A long press does. |
 

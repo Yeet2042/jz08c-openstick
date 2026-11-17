@@ -98,6 +98,12 @@ nmcli con mod hotspot connection.autoconnect-retries 0 2>/dev/null || true
 # NetworkManager runs its own dnsmasq; the system one only fights it for port 53.
 systemctl disable --now dnsmasq.service 2>/dev/null || true
 
+# containers page: the status screen reads the Podman REST API sockets
+if command -v podman >/dev/null; then
+    systemctl enable --now podman.socket >/dev/null 2>&1 || true
+    echo "   rootless containers: run 'systemctl --user enable --now podman.socket' as each user"
+fi
+
 systemctl daemon-reload
 systemctl enable jz-status.service jz-lowbat.timer >/dev/null
 

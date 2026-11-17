@@ -9,6 +9,7 @@ package main
 import (
 	"encoding/binary"
 	"flag"
+	"image"
 	"image/png"
 	"log"
 	"os"
@@ -73,8 +74,14 @@ func openButtons() []*os.File {
 	return files
 }
 
-// watchButton sends on presses for every key-down event (struct input_event, 24 bytes on arm64).
-func watchButton(f *os.File, presses chan<- struct{}) {
+// keyEvent is a press (down=true) or release of any of the board's buttons.
+type keyEvent struct {
+	down bool
+	at   time.Time
+}
+
+// watchButton forwards key down/up events (struct input_event, 24 bytes on arm64).
+func watchButton(f *os.File, keys chan<- keyEvent) {
 	buf := make([]byte, 24*16)
 	for {
 		n, err := f.Read(buf)
@@ -85,8 +92,8 @@ func watchButton(f *os.File, presses chan<- struct{}) {
 		for i := 0; i+24 <= n; i += 24 {
 			typ := binary.LittleEndian.Uint16(buf[i+16:])
 			val := int32(binary.LittleEndian.Uint32(buf[i+20:]))
-			if typ == 1 && val == 1 { // EV_KEY, pressed
-				presses <- struct{}{}
+			if typ == 1 && (val == 0 || val == 1) { // EV_KEY up/down (ignore autorepeat)
+				keys <- keyEvent{down: val == 1, at: time.Now()}
 			}
 		}
 	}
@@ -108,14 +115,35 @@ func collect(mr *modemReader, wr *wifiReader) Status {
 	}
 }
 
+// how long a press has to be held to toggle the screen
+const holdToggle = time.Second
+
+// refresh interval per page: status, resources, containers
+var pageInterval = [numPages]time.Duration{5 * time.Second, 2 * time.Second, 5 * time.Second}
+
 func main() {
-	interval := flag.Duration("interval", 5*time.Second, "refresh interval")
 	snapshot := flag.String("png", "", "render one frame to this PNG file and exit (no framebuffer needed)")
+	pageFlag := flag.Int("page", 0, "page for -png: 0 status, 1 resources, 2 containers")
 	flag.IntVar(&batOffsetMV, "bat-offset-mv", 100, "subtract this from the fuel gauge voltage (the JZ08C's VM-BMS reads ~100 mV high)")
 	flag.Parse()
 	log.SetFlags(0)
 
 	mr, wr := newModemReader(), newWifiReader()
+	cs := &cpuSampler{}
+	cs.cpuPct() // prime the CPU counters
+
+	frameFor := func(page int) *image.RGBA {
+		s := collect(mr, wr)
+		var r Res
+		var ct []Container
+		switch page {
+		case 1:
+			r = readRes(cs)
+		case 2:
+			ct = containers()
+		}
+		return renderPage(page, s, r, ct)
+	}
 
 	if *snapshot != "" {
 		f, err := os.Create(*snapshot)
@@ -123,7 +151,10 @@ func main() {
 			log.Fatal(err)
 		}
 		defer f.Close()
-		if err := png.Encode(f, render(collect(mr, wr))); err != nil {
+		if *pageFlag == 1 {
+			time.Sleep(500 * time.Millisecond) // give the CPU sampler a window
+		}
+		if err := png.Encode(f, frameFor(*pageFlag%numPages)); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -137,38 +168,69 @@ func main() {
 	blank := make([]byte, W*H*4)
 
 	ledsOff()
-	screenOn := true
+	screenOn, page := true, 0
 	setBacklight(true)
 
-	presses := make(chan struct{}, 8)
+	keys := make(chan keyEvent, 16)
 	for _, f := range openButtons() {
-		go watchButton(f, presses)
+		go watchButton(f, keys)
 	}
 
-	tick := time.NewTicker(*interval)
-	defer tick.Stop()
 	draw := func() {
-		toXRGB(render(collect(mr, wr)), frame)
+		toXRGB(frameFor(page), frame)
 		if _, err := fb.WriteAt(frame, 0); err != nil {
 			log.Printf("framebuffer: %v", err)
 		}
 	}
+	setScreen := func(on bool) {
+		screenOn = on
+		setBacklight(on)
+		if on {
+			draw()
+		} else {
+			_, _ = fb.WriteAt(blank, 0) // black too, in case the backlight module is missing
+		}
+		log.Printf("screen on=%v", on)
+	}
+
+	refresh := time.NewTimer(pageInterval[page])
+	hold := time.NewTimer(time.Hour)
+	hold.Stop()
+	pressed, consumed := false, false
 	draw()
 	for {
 		select {
-		case <-tick.C:
+		case <-refresh.C:
 			if screenOn {
 				draw()
 			}
-		case <-presses:
-			screenOn = !screenOn
-			setBacklight(screenOn)
-			if screenOn {
+			refresh.Reset(pageInterval[page])
+
+		case ev := <-keys:
+			switch {
+			case ev.down && !pressed:
+				pressed, consumed = true, false
+				hold.Reset(holdToggle)
+			case !ev.down && pressed:
+				pressed = false
+				hold.Stop()
+				if consumed {
+					break // long press already handled
+				}
+				if !screenOn { // a short press wakes the screen
+					setScreen(true)
+					break
+				}
+				page = (page + 1) % numPages
 				draw()
-			} else {
-				_, _ = fb.WriteAt(blank, 0) // black too, in case the backlight module is missing
+				refresh.Reset(pageInterval[page])
 			}
-			log.Printf("button: screen on=%v", screenOn)
+
+		case <-hold.C: // held for holdToggle: toggle the screen right away
+			if pressed {
+				consumed = true
+				setScreen(!screenOn)
+			}
 		}
 	}
 }
