@@ -1,0 +1,9 @@
+*.img
+backup/
+config
+linux-*.tar.xz
+*.o
+*.mod*
+.*.cmd
+Module.symvers
+modules.order

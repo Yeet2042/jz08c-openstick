@@ -1,0 +1,6 @@
+[Unit]
+Description=JZ08C low-battery check
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jz-lowbat
