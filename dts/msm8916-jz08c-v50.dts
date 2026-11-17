@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * JZ08C V50 4G pocket WiFi (sticker "JZ08A-XPA-...-R3")
+ * MSM8916, 512 MB RAM, 4 GB eMMC, ST7735S 128x128 SPI TFT, 2100 mAh battery.
+ *
+ * EDL: short pad BOOT to pad 1P8 with the battery connected, then plug USB.
+ */
+
+/dts-v1/;
+
+#include "msm8916-ufi.dtsi"
+
+/ {
+	model = "JZ08C V50 4G Pocket WiFi";
+	compatible = "jz,jz08c-v50", "qcom,msm8916";
+
+	battery: battery {
+		compatible = "simple-battery";
+		/* label: 2100 mAh, 7.98 Wh (3.8 V nominal); charged to 4.2 V on purpose */
+		charge-full-design-microamp-hours = <2100000>;
+		voltage-min-design-microvolt = <3400000>;
+		voltage-max-design-microvolt = <4200000>;
+		constant-charge-voltage-max-microvolt = <4200000>;
+		constant-charge-current-max-microamp = <1000000>;
+		charge-term-current-microamp = <100000>;
+		/* generic Qualcomm profile from the stock dtb, 25 C column */
+		ocv-capacity-celsius = <25>;
+		ocv-capacity-table-0 = <4167000 100>, <4112000 95>, <4072000 90>,
+			<4025000 85>, <3984000 80>, <3957000 75>, <3929000 70>,
+			<3900000 65>, <3858000 60>, <3827000 55>, <3807000 50>,
+			<3792000 45>, <3780000 40>, <3772000 35>, <3765000 30>,
+			<3753000 25>, <3731000 20>, <3704000 16>, <3687000 13>,
+			<3683000 11>, <3682000 10>, <3681000 9>, <3680000 8>,
+			<3676000 7>, <3667000 6>, <3638000 5>, <3591000 4>,
+			<3528000 3>, <3445000 2>, <3308000 1>, <3000000 0>;
+	};
+
+	/*
+	 * TFT backlight: PM8916 MPP4 in current-sink mode. The gpio value only
+	 * flips the mode bit; the jz08c_bl module switches the MPP master enable.
+	 */
+	backlight-led {
+		compatible = "gpio-leds";
+		pinctrl-0 = <&lcd_bl_default>;
+		pinctrl-names = "default";
+
+		led-lcd {
+			label = "lcd-backlight";
+			gpios = <&pm8916_mpps 3 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+	};
+};
+
+/* ---- buttons ---- */
+
+&button_restart {
+	/* stock: key_f2; plain button, not a reboot key */
+	label = "F2";
+	linux,code = <KEY_F2>;
+	gpios = <&tlmm 37 GPIO_ACTIVE_HIGH>;
+};
+
+&{/gpio-keys} {
+	pinctrl-0 = <&button_default>, <&button_f3_default>;
+
+	button-f3 {
+		label = "F3";
+		linux,code = <KEY_F3>;
+		gpios = <&tlmm 107 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&button_default {
+	pins = "gpio37";
+	bias-pull-down;
+};
+
+/* ---- LEDs (all off: they are bright and not very useful) ---- */
+
+&led_r {
+	/* three lamps under the screen, red half */
+	label = "red:status";
+	gpios = <&tlmm 9 GPIO_ACTIVE_HIGH>;
+	default-state = "off";
+};
+
+&led_g {
+	/* three lamps under the screen, green half */
+	label = "green:status";
+	gpios = <&tlmm 31 GPIO_ACTIVE_HIGH>;
+	default-state = "off";
+};
+
+&led_b {
+	/* two green LEDs in the middle of the board */
+	label = "green:aux";
+	color = <LED_COLOR_ID_GREEN>;
+	gpios = <&tlmm 7 GPIO_ACTIVE_HIGH>;
+	default-state = "off";
+};
+
+&gpio_leds_default {
+	pins = "gpio7", "gpio9", "gpio31";
+};
+
+/* ---- modem / SIM ---- */
+
+&mpss {
+	pinctrl-0 = <&sim_ctrl_default>;
+	pinctrl-names = "default";
+};
+
+/* ---- TFT: ST7735S 128x128 on BLSP1 QUP4 ---- */
+
+&blsp_spi4 {
+	cs-gpios = <&tlmm 14 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	display@0 {
+		/* init sequence: /lib/firmware/jz08c-st7735s.bin */
+		compatible = "jz08c-st7735s", "panel-mipi-dbi-spi";
+		reg = <0>;
+		spi-max-frequency = <16000000>;
+		dc-gpios = <&tlmm 116 GPIO_ACTIVE_HIGH>;
+		/* drm_mipi_dbi drives reset as "1 = running" */
+		reset-gpios = <&tlmm 118 GPIO_ACTIVE_HIGH>;
+		power-supply = <&pm8916_l17>;
+		io-supply = <&pm8916_l6>;
+		width-mm = <26>;
+		height-mm = <26>;
+
+		panel-timing {
+			hactive = <128>;
+			vactive = <128>;
+			hback-porch = <2>;
+			vback-porch = <3>;
+			clock-frequency = <0>;
+			hfront-porch = <0>;
+			hsync-len = <0>;
+			vfront-porch = <0>;
+			vsync-len = <0>;
+		};
+	};
+};
+
+&pm8916_rpm_regulators {
+	pm8916_l17: l17 {
+		regulator-min-microvolt = <2850000>;
+		regulator-max-microvolt = <2850000>;
+	};
+};
+
+/* ---- battery: charger + fuel gauge; USB VBUS detection comes from the charger ---- */
+
+&pm8916_bms {
+	monitored-battery = <&battery>;
+	status = "okay";
+};
+
+&pm8916_charger {
+	monitored-battery = <&battery>;
+	qcom,fast-charge-safe-voltage = <4200000>;
+	qcom,fast-charge-safe-current = <1000000>;
+	status = "okay";
+};
+
+/* shares the usb_vbus interrupt with the charger */
+&pm8916_usbin {
+	status = "disabled";
+};
+
+&usb {
+	extcon = <&pm8916_charger>;
+};
+
+&usb_hs_phy {
+	extcon = <&pm8916_charger>;
+};
+
+&pm8916_mpps {
+	lcd_bl_default: lcd-bl-state {
+		pins = "mpp4";
+		function = "sink";
+		output-high;
+		/* raw SINK_CTL code: 7 = 40 mA (same as stock) */
+		drive-strength = <7>;
+	};
+};
+
+&tlmm {
+	button_f3_default: button-f3-default-state {
+		pins = "gpio107";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	/* stock JZ08C values: external SIM slot */
+	sim_ctrl_default: sim-ctrl-default-state {
+		esim-sel-pins {
+			pins = "gpio22", "gpio23";
+			function = "gpio";
+			bias-disable;
+			output-low;
+		};
+
+		sim-en-pins {
+			pins = "gpio20";
+			function = "gpio";
+			bias-disable;
+			output-low;
+		};
+
+		sim-sel-pins {
+			pins = "gpio1";
+			function = "gpio";
+			bias-disable;
+			output-high;
+		};
+	};
+};

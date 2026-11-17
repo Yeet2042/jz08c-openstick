@@ -7,3 +7,7 @@ linux-*.tar.xz
 .*.cmd
 Module.symvers
 modules.order
+kernel/linux-*.tar.gz
+kernel/jz08c-kernel-*.tar.gz
+status/jz-status-arm64
+!status/go.mod

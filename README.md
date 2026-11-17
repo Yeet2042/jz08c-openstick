@@ -47,25 +47,41 @@ After about a minute, join WiFi `Openstick` (password `openstick`) and run `ssh 
 
 Out of the box: WiFi AP, modem with the original IMEI, SIM and 4G, and Bluetooth all work. On this board the SIM switch GPIOs match the v33 defaults, unlike the JZ0145 v40.
 
-## Extras: screen, battery, backlight, buttons
+## Extras: kernel 6.12, screen, battery, backlight, buttons
 
-Copy this repo to the board, then run:
+Download `jz08c-kernel-6.12.1.tar.gz` and `jz-status-arm64` from the [latest release](https://github.com/Yeet2042/jz08c-openstick/releases), put `jz-status-arm64` in `status/`, copy the repo to the board, then run:
 
 ```bash
-sudo ./install.sh          # add --ecm to use CDC-ECM USB networking (macOS)
+sudo ./install.sh --kernel jz08c-kernel-6.12.1.tar.gz --ecm   # --ecm: CDC-ECM USB networking for macOS
 sudo reboot
 ```
+
+Leave out `--kernel` to stay on the OpenStick 6.6 kernel. Kernel 6.12 gives 380 MB of usable RAM instead of 317 MB.
+
+Tested on this board: Debian 13 with kernel `6.12.1-msm8916`. WiFi AP, 4G modem, USB, TFT, charger and fuel gauge, backlight, buttons.
 
 What it installs:
 
 | | |
 |---|---|
-| `dts/msm8916-jz08c.dts` | The v33 dtb plus the JZ08C hardware below. A compiled `.dtb` is included. |
+| `dts/msm8916-jz08c-v50.dts` | Device tree source for kernel 6.12, built on `msm8916-ufi.dtsi`. A compiled `.dtb` is included. |
+| `dts/msm8916-jz08c.dts` | Older equivalent for the stock 6.6 kernel: the decompiled v33 dtb plus the changes |
 | `firmware/jz08c-st7735s.bin` | Panel init sequence for `panel-mipi-dbi`, converted from the stock dtb with `tools/mkfw.py` |
-| `driver/jz08c_bl.c` | Small kernel module for switching the backlight. A prebuilt `.ko` for `6.6.0-msm8916` is included. |
-| `board/jz-status.py` | Status screen showing battery, time, 4G signal, operator, IPs and WiFi clients. A short press of the power button turns the screen on or off. |
+| `driver/jz08c_bl.c` | Small kernel module for switching the backlight. It's included in the 6.12 release tarball; a prebuilt `.ko` for 6.6 is in `driver/`. |
+| `status/` (Go) | Status screen showing battery, time, 4G signal, operator, IPs and WiFi clients. A short press of the power button turns the screen on or off. It talks to D-Bus, netlink and nl80211 directly and spawns no helper processes: about 9.5 MB RAM, versus 19 MB for the Python version in `board/jz-status.py`. |
 | `board/jz-lowbat` + timer | Shuts down cleanly when on battery and at or below 5% |
 | `board/logind-powerkey.conf` | A short power-key press no longer shuts down. A long press does. |
+
+### Building
+
+```bash
+kernel/build.sh                 # kernel 6.12.1 + dtb + modules + jz08c_bl → kernel/jz08c-kernel-6.12.1.tar.gz
+cd status && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o jz-status-arm64 .
+```
+
+Both run fine on an Apple Silicon Mac: the kernel builds in an arm64 Debian container (OrbStack/Docker), and the Go binary is cross-compiled.
+
+`./jz-status-arm64 -png out.png` renders one frame to a PNG, without needing the framebuffer.
 
 ### What the dtb adds
 
@@ -80,6 +96,9 @@ What it installs:
 
 ## Things that cost time (gotchas)
 
+- **Don't run a plain `apt upgrade`.** The rootfs points at `stable`, which is now Debian 13. Its `wpasupplicant` (2:2.10-24) can't start the AP on wcn36xx: you get `hal_delete_sta_self response failed err=7` and the hotspot never comes up, on kernel 6.6 and 6.12 alike. `install.sh` pins the Debian 12 build (2:2.10-12+deb12u3) and puts it on hold. The rest of Debian 13 works.
+- **System `dnsmasq.service` fails after the upgrade.** NetworkManager already runs its own dnsmasq on port 53. Disable the system one.
+- **lk1st ignores `reboot bootloader`.** To reach fastboot from Linux, rename `/boot/extlinux` and reboot. lk1st falls back to fastboot when it finds no config. Then `fastboot boot` a test kernel without writing anything.
 - **White screen, take 1:** the panel supply L17 was off and had no voltage set in the v33 dtb. The stock dtb shows `vdd` = L17 (2.85 V) and `vddio` = L6.
 - **White screen, take 2:** `reset-gpios` must be `GPIO_ACTIVE_HIGH` for `drm_mipi_dbi`. With active-low the panel is held in reset forever.
 - **The panel driver doesn't autoload.** The SPI modalias is the first compatible, so `panel-mipi-dbi` goes in `modules-load.d`.
