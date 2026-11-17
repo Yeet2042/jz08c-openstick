@@ -18,7 +18,7 @@ How to run Debian 12 ([OpenStick](https://github.com/kinsamanka/OpenStick-Builde
 | RAM / eMMC | 512 MB (317 MB usable) / 3.64 GiB SK hynix `H4G2a` |
 | CPU | 4× Cortex-A53, up to 998 MHz |
 | Screen | ST7735S 128×128 on SPI (BLSP1 QUP4) |
-| Battery | 1500 mAh Li-ion, PM8916 linear charger |
+| Battery | 2100 mAh / 7.98 Wh (3.8 V nominal, likely LiHV), PM8916 linear charger. Charged to 4.2 V only, which is safe for any Li-ion. |
 | Stock OS | Android 4.4, web UI `UFI-JZ_V3.0.0` at 192.168.100.1. Stock USB is mass-storage only, no ADB. |
 
 ## Entering EDL
@@ -74,7 +74,7 @@ What it installs:
 | TFT (ST7735S) | `spi@78b8000` with `cs-gpios` gpio14. `panel-mipi-dbi-spi`: DC gpio116, RESET gpio118 (**active high**), x/y offset 2/3 |
 | Panel supplies | `power-supply` = L17 at 2.85 V, `io-supply` = L6 at 1.8 V |
 | Backlight | PM8916 **MPP4** in current-sink mode, 40 mA |
-| Charger / fuel gauge | `pm8916-lbc` and `pm8916-bms-vm` enabled, with a `simple-battery` node (1500 mAh, 4.2 V, OCV table from stock) |
+| Charger / fuel gauge | `pm8916-lbc` and `pm8916-bms-vm` enabled, with a `simple-battery` node (2100 mAh per the battery label, 4.2 V, OCV table from the stock dtb's generic Qualcomm profile) |
 | USB VBUS detect | `usb-detect@1300` disabled. USB `extcon` comes from the charger instead. |
 | LEDs | gpio9 red and gpio31 green (three lamps under the screen), gpio7 green (mid-board). gpio6 and gpio8 from the v33 dtb aren't connected. |
 

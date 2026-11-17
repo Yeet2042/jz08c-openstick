@@ -3033,7 +3033,7 @@
 
 	battery {
 		compatible = "simple-battery";
-		charge-full-design-microamp-hours = <1500000>;
+		charge-full-design-microamp-hours = <2100000>;	/* label: 2100 mAh, 7.98 Wh (3.8 V nominal) */
 		voltage-min-design-microvolt = <3400000>;
 		voltage-max-design-microvolt = <4200000>;
 		constant-charge-voltage-max-microvolt = <4200000>;
