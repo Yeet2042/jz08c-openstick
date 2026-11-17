@@ -99,6 +99,8 @@ Without `status/jz-status-arm64`, `install.sh` falls back to the Python status s
 ## Things that cost time (gotchas)
 
 - **Don't run a plain `apt upgrade`.** The rootfs points at `stable`, which is now Debian 13. Its `wpasupplicant` (2:2.10-24) can't start the AP on wcn36xx: you get `hal_delete_sta_self response failed err=7` and the hotspot never comes up, on kernel 6.6 and 6.12 alike. `install.sh` pins the Debian 12 build (2:2.10-12+deb12u3) and puts it on hold. The rest of Debian 13 works.
+- **Never `tar -x` a kernel tarball with a `./lib/` entry over `/`.** On merged-/usr Debian, `/lib` is a symlink to `usr/lib`. GNU tar replaces it with a real directory, after which nothing can run: the dynamic loader is gone and sshd drops every connection. `kernel/build.sh` now installs modules under `usr/lib/modules`, and `install.sh` extracts with `--keep-directory-symlink`. Recovery: through EDL, add a busybox initramfs to the boot partition (`initrd` line in `extlinux.conf`) that restores the symlink.
+- **Containers:** `podman` port mapping needs `NFT_FIB_INET`/`NFT_FIB_IPV4`/`NFT_FIB_IPV6`. zram with zstd needs `ZRAM_BACKEND_ZSTD`. Both are enabled in `kernel/build-in-container.sh`.
 - **System `dnsmasq.service` fails after the upgrade.** NetworkManager already runs its own dnsmasq on port 53. Disable the system one.
 - **lk1st ignores `reboot bootloader`.** To reach fastboot from Linux, rename `/boot/extlinux` and reboot. lk1st falls back to fastboot when it finds no config. Then `fastboot boot` a test kernel without writing anything.
 - **White screen, take 1:** the panel supply L17 was off and had no voltage set in the v33 dtb. The stock dtb shows `vdd` = L17 (2.85 V) and `vddio` = L6.

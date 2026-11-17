@@ -45,8 +45,10 @@ apt-mark hold wpasupplicant >/dev/null
 [ -f "$EXT.orig" ] || cp "$EXT" "$EXT.orig"
 if [ -n "$KERNEL" ]; then
     echo "==> kernel 6.12 from $KERNEL"
-    tar -xzf "$KERNEL" -C /
-    KREL=$(tar -tzf "$KERNEL" | sed -n 's#^\./lib/modules/\([^/]*\)/$#\1#p' | head -1)
+    # never let tar replace the /lib -> usr/lib symlink (merged /usr): extract only
+    # what we need and keep existing directory symlinks
+    MODS=$(tar -tzf "$KERNEL" | grep -m1 -oE '^\./(usr/)?lib/modules/')
+    tar -xzf "$KERNEL" -C / --keep-directory-symlink ./boot "$MODS"
     printf 'linux /vmlinuz-6.12\nfdt /dtbs/qcom/msm8916-jz08c-v50.dtb\nappend %s\n' "$CMDLINE" > "$EXT"
 else
     echo "==> device tree for the stock 6.6 kernel"
