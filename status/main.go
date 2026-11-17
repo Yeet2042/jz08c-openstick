@@ -22,6 +22,9 @@ const (
 	ledsDir   = "/sys/class/leds"
 )
 
+// batOffsetMV corrects the fuel gauge voltage reading (see -bat-offset-mv).
+var batOffsetMV int
+
 // buttons whose short press toggles the screen (matched by input device name)
 var buttonNames = []string{"pm8941_pwrkey", "GPIO Buttons"}
 
@@ -91,6 +94,9 @@ func watchButton(f *os.File, presses chan<- struct{}) {
 
 func collect(mr *modemReader, wr *wifiReader) Status {
 	pct, mv, usb := battery()
+	if mv > 0 {
+		mv -= batOffsetMV
+	}
 	return Status{
 		Host:    hostname(),
 		Battery: pct,
@@ -105,6 +111,7 @@ func collect(mr *modemReader, wr *wifiReader) Status {
 func main() {
 	interval := flag.Duration("interval", 5*time.Second, "refresh interval")
 	snapshot := flag.String("png", "", "render one frame to this PNG file and exit (no framebuffer needed)")
+	flag.IntVar(&batOffsetMV, "bat-offset-mv", 100, "subtract this from the fuel gauge voltage (the JZ08C's VM-BMS reads ~100 mV high)")
 	flag.Parse()
 	log.SetFlags(0)
 
